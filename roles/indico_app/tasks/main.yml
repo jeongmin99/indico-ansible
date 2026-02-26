@@ -1,0 +1,89 @@
+---
+# tasks file for indico_app
+#
+- name: mkdir
+      become: yes
+      become_user: indico
+      become_method: su
+      environment:
+        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
+      file:
+        path: ~/log/nginx
+        state: directory
+
+    - name: chmod whatfile
+      become: yes
+      become_user: indico
+      become_method: su
+      environment:
+        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
+      shell: . ~/.bashrc && chmod go-rwx ~/* ~/.[^.]*
+
+    - name: chmod tmp
+      become: yes
+      become_user: indico
+      become_method: su
+      environment:
+        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
+      shell: . ~/.bashrc &&  chmod 710 ~/ ~/archive ~/cache ~/log ~/tmp
+
+    - name: chmod env
+      become: yes
+      become_user: indico
+      become_method: su
+      environment:
+        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
+      shell: . ~/.bashrc && chmod 750 ~/web ~/.venv
+
+    - name: chmod nginx
+      become: yes
+      become_user: indico
+      become_method: su
+      environment:
+        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
+      shell: . ~/.bashrc && chmod g+w ~/log/nginx
+
+    - name: restorecon
+      become: yes
+      become_user: indico
+      become_method: su
+      environment:
+        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
+      shell: . ~/.bashrc && restorecon -R ~/
+
+    - name: echo man
+      become: yes
+      become_user: indico
+      become_method: su
+      environment:
+        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
+      shell: . ~/.bashrc && echo -e "\nSTATIC_FILE_METHOD = ('xaccelredirect', {'/opt/indico':'/.xsf/indico'})" >> ~/etc/indico.conf
+
+    - name: db prepare
+      become: yes
+      become_user: indico
+      become_method: su
+      environment:
+        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
+      shell: . ~/.bashrc && indico db prepare
+
+
+    - name: restart service
+      systemd:
+        state: restarted
+        name: "{{item}}"
+      with_items:
+        - nginx.service
+        - indico-celery.service
+        - indico-uwsgi.service
+
+    - name: enable service
+      systemd:
+        enabled: true
+        name: "{{item}}"
+      with_items:
+        - nginx.service
+        - postgresql-13.service
+        - redis.service
+        - indico-celery.service
+        - indico-uwsgi.service

@@ -1,0 +1,13 @@
+---
+# tasks file for firewall
+#
+#
+- name: firewall open
+  firewalld:
+    port: "{{item}}/tcp"
+    state: enabled
+    immediate: true
+    permanent: true
+  with_items:
+    - 80
+    - 443

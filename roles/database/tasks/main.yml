@@ -1,0 +1,21 @@
+---
+# tasks file for database
+
+- name: init postgresql
+  shell: /usr/pgsql-13/bin/postgresql-13-setup initdb
+
+- name: start postgresql service
+  systemd:
+    daemon-reload: yes
+    state: started
+    name: "{{item}}"
+  with_items:
+    - postgresql-13.service
+    - redis.service
+
+- name: create indico
+  shell: "{{item}}"
+  with_items:
+    - su - postgres -c 'createuser indico'
+    - su - postgres -c 'createdb -O indico indico'
+    - su - postgres -c 'psql indico -c "CREATE EXTENSION unaccent; CREATE EXTENSION pg_trgm;"'

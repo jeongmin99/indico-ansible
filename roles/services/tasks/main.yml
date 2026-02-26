@@ -1,0 +1,78 @@
+---
+# tasks file for services
+#
+#
+- name: set uwsgi-indico.ini
+  shell: |
+     cat > /etc/uwsgi-indico.ini <<'EOF'
+     [uwsgi]
+     uid = indico
+     gid = nginx
+     umask = 027
+     processes = 4
+     enable-threads = true
+     chmod-socket = 770
+     socket = /opt/indico/web/uwsgi.sock
+     stats = /opt/indico/web/uwsgi-stats.sock
+     protocol = uwsgi
+     master = true
+     auto-procname = true
+     procname-prefix-spaced = indico
+     disable-logging = true
+     single-interpreter = true
+     touch-reload = /opt/indico/web/indico.wsgi
+     wsgi-file = /opt/indico/web/indico.wsgi
+     virtualenv = /opt/indico/.venv
+     vacuum = true
+     buffer-size = 20480
+     memory-report = true
+     max-requests = 2500
+     harakiri = 900
+     harakiri-verbose = true
+     reload-on-rss = 2048
+     evil-reload-on-rss = 8192
+
+- name: set indico-uwsgi.service
+  shell: |
+    cat > /etc/systemd/system/indico-uwsgi.service <<'EOF'
+    [Unit]
+    Description=Indico uWSGI
+    After=network.target
+    [Service]
+    ExecStart=/opt/indico/.venv/bin/uwsgi --ini /etc/uwsgi-indico.ini
+    ExecReload=/bin/kill -HUP $MAINPID
+    Restart=always
+    SyslogIdentifier=indico-uwsgi
+    User=indico
+    Group=nginx
+    UMask=0027
+    Type=notify
+    NotifyAccess=all
+    KillMode=mixed
+    KillSignal=SIGQUIT
+    TimeoutStopSec=300
+    [Install]
+    WantedBy=multi-user.target
+
+- name: set indico-celery
+  shell: |
+    cat > /etc/systemd/system/indico-celery.service <<'EOF'
+    [Unit]
+    Description=Indico Celery
+    After=network.target
+    [Service]
+    ExecStart=/opt/indico/.venv/bin/indico celery worker -B
+    Restart=always
+    SyslogIdentifier=indico-celery
+    User=indico
+    Group=nginx
+    UMask=0027
+    Type=simple
+    KillMode=mixed
+    TimeoutStopSec=300
+    [Install]
+    WantedBy=multi-user.target
+
+- name: reload daemon
+  systemd:
+    daemon_reload: yes

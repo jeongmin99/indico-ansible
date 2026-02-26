@@ -1,0 +1,22 @@
+---
+# tasks file for repo
+#
+- name: install epel-release
+  yum: name=epel-release state=latest
+
+- name: insertafter string in file
+  lineinfile:
+    path: /etc/yum.repos.d/CentOS-Base.repo
+    insertafter: "{{item.exp}}"
+    line: "{{item.line}}"
+  loop:
+    - { exp: '\[base\]', line: 'exclude=postgresql* ' }
+    - { exp: '\[updates\]', line: 'exclude=postgresql*   ' }
+
+- name: install centos-release-scl
+  yum: name=centos-release-scl
+
+- name: install postgresql-repos
+  yum:
+    name: https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+    validate_certs: no

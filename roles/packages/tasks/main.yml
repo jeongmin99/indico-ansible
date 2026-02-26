@@ -1,0 +1,43 @@
+---
+# tasks file for packages
+#
+
+- name: install postgresql
+  yum:
+    name:
+      - postgresql13
+      - postgresql13-server
+      - postgresql13-libs
+      - postgresql13-devel
+      - postgresql13-contrib
+
+- name: install gccz
+  yum:
+    name:
+      - git
+      - gcc
+      - make
+      - redis
+      - nginx
+
+- name: install lib
+  yum:
+    name:
+      - libjpeg-turbo-devel
+      - libxslt-devel
+      - libxml2-devel
+      - libffi-devel
+      - pcre-devel
+      - libyaml-devel
+      - zlib-devel
+      - bzip2
+      - bzip2-devel
+      - readline-devel
+      - sqlite
+      - sqlite-devel
+      - openssl-devel
+      - xz
+      - xz-devel
+      - findutils
+      - libuuid-devel
+      - tar

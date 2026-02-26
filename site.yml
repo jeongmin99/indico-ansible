@@ -1,0 +1,17 @@
+- name: install indico
+  hosts: worker1
+  gather_facts: no
+  become: yes
+  vars:
+    hostname: "192.168.56.102"
+
+  roles:
+    - repo
+    - packages
+    - database
+    - services
+    - nginx_ssl
+    - selinux
+    - python_env
+    - indico_app
+    - firewall
