@@ -12,7 +12,7 @@
 ### Indico
 Indico는 웹 기반 행사 관리 플랫폼으로, 소규모 강연부터 대형 국제 학회까지 다양한 규모의 이벤트를 효율적으로 운영할 수 있도록 지원합니다. 본 프로젝트는 CERN에서 개발된 오픈소스 소프트웨어이며, 전 세계 150개 이상의 기관에서 활용되고 있습니다.
 
-#### Indico Docs 
+### Indico Installation Guide 
 https://docs.getindico.io/en/stable/#
 
 ### 프로젝트 목표
@@ -36,6 +36,7 @@ https://docs.getindico.io/en/stable/#
 - SELinux 정책 적용
 - firewalld 포트 설정
 
+
 ### 배포 흐름
 
 1. Repository 및 패키지 설치
@@ -53,13 +54,58 @@ https://docs.getindico.io/en/stable/#
 
 각 역할(Role)은 책임 단위로 분리하여 가독성과 유지보수성을 높이도록 설계하였습니다.
 
+역할 별로 tasks/main.yml에 playbook을 작성했습니다.
+
+```
+indico-ansible
+├── LICENSE
+├── ansible.cfg
+├── hosts
+├── site.yml
+└── roles
+    ├── database
+    │   └── tasks
+    │       └── main.yml
+    │
+    ├── firewall
+    │   └── tasks
+    │       └── main.yml
+    │
+    ├── indico_app
+    │   └── tasks
+    │       └── main.yml
+    │
+    ├── nginx_ssl
+    │   └── tasks
+    │       └── main.yml
+    │
+    ├── packages
+    │   └── tasks
+    │       └── main.yml
+    │
+    ├── python_env
+    │   └── tasks
+    │       └── main.yml
+    │
+    ├── repo
+    │   └── tasks
+    │       └── main.yml
+    │
+    ├── selinux
+    │   └── tasks
+    │       └── main.yml
+    │
+    └── services
+        └── tasks
+            └── main.yml
+```
+
 ---
 
 ## 실행 방법
 
-``` 
+```
 ansible-playbook -i inventory site.yml
-
 ```
 
 
