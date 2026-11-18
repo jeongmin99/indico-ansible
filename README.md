@@ -1,142 +1,74 @@
-# Indico 배포 자동화 (EL7 기반)
+# indico-ansible
 
-> Ansible을 사용한 CentOS 7 (EL7) 환경 Indico 자동 배포 프로젝트
+CentOS 7 서버 한 대에 [Indico](https://getindico.io)를 설치하는 Ansible 플레이북입니다.
 
----
+Indico는 CERN이 만든 오픈소스 행사·학회 관리 시스템입니다. [공식 설치 문서](https://docs.getindico.io/en/stable/installation/production/centos/)의 수동 설치 절차를 그대로 role로 옮겼습니다.
 
-## 개요 (Overview)
+> CentOS 7은 2024년 6월에 지원이 끝났습니다. 이 플레이북은 EL7 기준으로 만들었고, 다른 배포판에서는 테스트하지 않았습니다.
 
-이 프로젝트는 CentOS 7 (EL7) 환경에서 **Indico**를 자동으로 배포하기 위해 Ansible을 활용하여 구성한 인프라 자동화 플레이북입니다.
+## 설치되는 것
 
-
-### Indico
-Indico는 웹 기반 행사 관리 플랫폼으로, 소규모 강연부터 대형 국제 학회까지 다양한 규모의 이벤트를 효율적으로 운영할 수 있도록 지원합니다. 본 프로젝트는 CERN에서 개발된 오픈소스 소프트웨어이며, 전 세계 150개 이상의 기관에서 활용되고 있습니다.
-
-### Indico Installation Guide 
-https://docs.getindico.io/en/stable/#
-
-### 프로젝트 목표
-
-- 수동 설치 과정을 자동화
-- 재현 가능한 배포 환경 구축
-- 역할(Role) 기반 구조로 유지보수성 향상
-
----
-
-## 아키텍처 구성
-
-본 배포는 다음 구성 요소를 포함합니다:
-
-- PostgreSQL 13
-- Redis
-- Nginx
-- uWSGI
-- Python Virtual Environment
-- systemd 서비스 등록
-- SELinux 정책 적용
-- firewalld 포트 설정
-
-
-### 배포 흐름
-
-1. Repository 및 패키지 설치
-2. PostgreSQL 초기화 및 데이터베이스 생성
-3. Python 가상환경 구성
-4. Indico 설치
-5. systemd 서비스 등록
-6. SELinux 정책 적용
-7. 방화벽 포트 오픈
-
----
-
-## 프로젝트 구조
-
-
-각 역할(Role)은 책임 단위로 분리하여 가독성과 유지보수성을 높이도록 설계하였습니다.
-
-역할 별로 tasks/main.yml에 playbook을 작성했습니다.
-
-```
-indico-ansible
-├── LICENSE
-├── ansible.cfg
-├── hosts
-├── site.yml
-└── roles
-    ├── database
-    │   └── tasks
-    │       └── main.yml
-    │
-    ├── firewall
-    │   └── tasks
-    │       └── main.yml
-    │
-    ├── indico_app
-    │   └── tasks
-    │       └── main.yml
-    │
-    ├── nginx_ssl
-    │   └── tasks
-    │       └── main.yml
-    │
-    ├── packages
-    │   └── tasks
-    │       └── main.yml
-    │
-    ├── python_env
-    │   └── tasks
-    │       └── main.yml
-    │
-    ├── repo
-    │   └── tasks
-    │       └── main.yml
-    │
-    ├── selinux
-    │   └── tasks
-    │       └── main.yml
-    │
-    └── services
-        └── tasks
-            └── main.yml
-```
-
----
+| 구성 요소 | 버전·방식 |
+|---|---|
+| PostgreSQL | 13 (PGDG 저장소) |
+| Redis, nginx | EPEL 패키지 |
+| Python | pyenv로 3.9.16 빌드, `/opt/indico/.venv` 가상환경 |
+| Indico, uWSGI | pip 설치, systemd 서비스로 등록 (`indico-uwsgi`, `indico-celery`) |
+| TLS | 자체 서명 인증서 |
+| SELinux | 끄지 않고 Indico용 정책 모듈 적용 |
+| firewalld | 80, 443 포트 개방 |
 
 ## 실행 방법
 
+1. `inventory/hosts.ini`에 대상 서버 주소를 적습니다.
+
+   ```ini
+   [indico]
+   worker1 ansible_host=192.168.56.102 ansible_user=root
+   ```
+
+2. 관리자 이메일 같은 값은 `group_vars/all.yml`에서 바꿉니다. 접속 주소(`indico_hostname`)는 기본으로 `ansible_host`를 씁니다.
+
+3. 필요한 컬렉션을 받고 실행합니다.
+
+   ```bash
+   ansible-galaxy collection install -r requirements.yml
+   ansible-playbook site.yml
+   ```
+
+설치가 끝나면 `https://<서버 주소>`로 접속해 첫 관리자 계정을 만듭니다.
+
+## 구조
+
 ```
-ansible-playbook -i inventory site.yml
+.
+├── ansible.cfg
+├── inventory/hosts.ini
+├── group_vars/all.yml        # 주소, 경로, 버전 변수
+├── requirements.yml
+├── site.yml
+└── roles
+    ├── repo          # EPEL, SCL, PGDG 저장소. 기본 저장소의 postgresql 제외
+    ├── packages      # PostgreSQL 13, Redis, nginx, 빌드용 라이브러리
+    ├── database      # initdb, indico 사용자와 DB, unaccent·pg_trgm 확장
+    ├── services      # uWSGI 설정, systemd 유닛
+    ├── nginx_ssl     # nginx 사이트 설정, DH 파라미터, 자체 서명 인증서
+    ├── selinux       # Indico SELinux 정책 모듈
+    ├── python_env    # indico 사용자, pyenv, venv, pip 설치, setup wizard
+    ├── indico_app    # 권한 정리, 정적 파일 설정, db prepare, 서비스 시작
+    └── firewall      # 80, 443 개방
 ```
 
+설정 파일은 role의 `templates/`, `files/`에 두고 `template`, `copy` 모듈로 배포합니다. initdb, DB 생성, pyenv 빌드, setup wizard, `indico db prepare`는 이미 되어 있으면 건너뛰어서, 같은 서버에 다시 실행해도 됩니다.
 
-## 설계 고려 사항 (Design Considerations)
+## 설계 메모
 
-- **역할(Role) 기반 구조 분리**
-  - 기능 단위로 역할을 분리하여 가독성과 유지보수성을 개선
-  - 책임 단위 분리를 통해 확장 가능하도록 설계
+- **PostgreSQL 패키지 분리**: CentOS 기본 저장소의 `postgresql` 패키지가 PGDG 13 패키지와 섞이지 않도록 `CentOS-Base.repo`의 `[base]`, `[updates]`에 `exclude=postgresql*`를 넣습니다.
+- **SELinux 유지**: SELinux를 끄지 않고, nginx가 uWSGI 소켓과 로그 디렉터리에 접근할 수 있게 정책 모듈(`roles/selinux/files/indico.cil`)을 올립니다.
+- **설치 마법사 자동 응답**: `indico setup wizard`는 대화형이라 `expect` 모듈로 답을 넣습니다. 프롬프트 색 코드가 매칭을 방해하지 않도록 `PROMPT_TOOLKIT_COLOR_DEPTH=DEPTH_1_BIT`로 색을 끄고 `sed`로 남은 코드를 지웁니다.
 
-- **systemd 기반 서비스 관리**
-  - uWSGI 및 Celery를 systemd로 통합 관리
-  - Unit 파일 생성 후 `daemon-reload` 명시적 수행
+## 한계
 
-- **PostgreSQL 버전 충돌 방지**
-  - EL7 기본 저장소의 PostgreSQL 패키지와 충돌 방지를 위해  
-    `exclude=postgresql*` 설정 적용
-
-- **SELinux 비활성화 대신 정책 적용**
-  - 보안을 유지하기 위해 SELinux를 끄지 않고 Custom Policy 모듈 적용
-
-- **명확한 배포 순서 구성**
-  - DB 초기화 → 서비스 등록 → 정책 적용 → 방화벽 오픈 순서로 구성
-  - 서비스 의존성과 실행 순서를 고려하여 설계
-
----
-
-## 한계점 (Limitations)
-
-- 일부 `shell` 기반 작업은 완전한 멱등성(idempotency)을 보장하지 않음
-- 특정 설정 값이 하드코딩되어 있어 유연성이 제한적
-- EL7 환경에 최적화되어 있으며, 다른 배포판에 대한 일반화 부족
-- 멀티 노드 또는 고가용성(HA) 환경은 고려되지 않음
-
----
+- setup wizard 응답은 특정 Indico 버전의 질문 순서에 맞춰져 있어서, 버전이 바뀌면 다시 맞춰야 합니다.
+- 서버 한 대 구성만 다룹니다. DB 분리나 이중화는 없습니다.
+- 인증서는 자체 서명이라 실제 서비스에는 따로 발급받은 인증서로 바꿔야 합니다.

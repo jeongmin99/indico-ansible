@@ -1,27 +1,27 @@
 ---
-# tasks file for packages
-#
-
-- name: install postgresql
-  yum:
+- name: Install PostgreSQL
+  ansible.builtin.yum:
     name:
-      - postgresql13
-      - postgresql13-server
-      - postgresql13-libs
-      - postgresql13-devel
-      - postgresql13-contrib
+      - "postgresql{{ pg_version }}"
+      - "postgresql{{ pg_version }}-server"
+      - "postgresql{{ pg_version }}-libs"
+      - "postgresql{{ pg_version }}-devel"
+      - "postgresql{{ pg_version }}-contrib"
+    state: present
 
-- name: install gccz
-  yum:
+- name: Install build tools, Redis and nginx
+  ansible.builtin.yum:
     name:
       - git
       - gcc
       - make
       - redis
       - nginx
+    state: present
 
-- name: install lib
-  yum:
+# pyenv로 Python을 빌드할 때 필요한 헤더
+- name: Install libraries for building Python and Indico
+  ansible.builtin.yum:
     name:
       - libjpeg-turbo-devel
       - libxslt-devel
@@ -41,3 +41,4 @@
       - findutils
       - libuuid-devel
       - tar
+    state: present

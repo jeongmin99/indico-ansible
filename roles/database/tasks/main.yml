@@ -1,21 +1,53 @@
 ---
-# tasks file for database
+- name: Initialize PostgreSQL data directory
+  ansible.builtin.command: "{{ pg_bin }}/postgresql-{{ pg_version }}-setup initdb"
+  args:
+    creates: "/var/lib/pgsql/{{ pg_version }}/data/PG_VERSION"
 
-- name: init postgresql
-  shell: /usr/pgsql-13/bin/postgresql-13-setup initdb
-
-- name: start postgresql service
-  systemd:
-    daemon-reload: yes
+- name: Start and enable PostgreSQL and Redis
+  ansible.builtin.systemd:
+    name: "{{ item }}"
     state: started
-    name: "{{item}}"
-  with_items:
-    - postgresql-13.service
-    - redis.service
+    enabled: true
+    daemon_reload: true
+  loop:
+    - "postgresql-{{ pg_version }}"
+    - redis
 
-- name: create indico
-  shell: "{{item}}"
-  with_items:
-    - su - postgres -c 'createuser indico'
-    - su - postgres -c 'createdb -O indico indico'
-    - su - postgres -c 'psql indico -c "CREATE EXTENSION unaccent; CREATE EXTENSION pg_trgm;"'
+- name: Check whether the indico role exists
+  ansible.builtin.command: psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='indico'"
+  become: true
+  become_user: postgres
+  register: indico_role
+  changed_when: false
+
+- name: Create indico role
+  ansible.builtin.command: createuser indico
+  become: true
+  become_user: postgres
+  when: indico_role.stdout != "1"
+  changed_when: true
+
+- name: Check whether the indico database exists
+  ansible.builtin.command: psql -tAc "SELECT 1 FROM pg_database WHERE datname='indico'"
+  become: true
+  become_user: postgres
+  register: indico_db
+  changed_when: false
+
+- name: Create indico database
+  ansible.builtin.command: createdb -O indico indico
+  become: true
+  become_user: postgres
+  when: indico_db.stdout != "1"
+  changed_when: true
+
+- name: Create extensions Indico needs
+  ansible.builtin.command: psql indico -c "CREATE EXTENSION IF NOT EXISTS {{ item }};"
+  become: true
+  become_user: postgres
+  loop:
+    - unaccent
+    - pg_trgm
+  register: ext_result
+  changed_when: "'already exists' not in ext_result.stderr"

@@ -1,22 +1,28 @@
 ---
-# tasks file for repo
-#
-- name: install epel-release
-  yum: name=epel-release state=latest
+- name: Install EPEL repository
+  ansible.builtin.yum:
+    name: epel-release
+    state: present
 
-- name: insertafter string in file
-  lineinfile:
+# 기본 저장소의 postgresql 9.2 패키지가 PGDG 13 패키지와 섞이지 않도록 막는다.
+- name: Exclude postgresql from CentOS base and updates
+  ansible.builtin.lineinfile:
     path: /etc/yum.repos.d/CentOS-Base.repo
-    insertafter: "{{item.exp}}"
-    line: "{{item.line}}"
+    insertafter: "{{ item }}"
+    line: "exclude=postgresql*"
+    firstmatch: true
   loop:
-    - { exp: '\[base\]', line: 'exclude=postgresql* ' }
-    - { exp: '\[updates\]', line: 'exclude=postgresql*   ' }
+    - '^\[base\]'
+    - '^\[updates\]'
 
-- name: install centos-release-scl
-  yum: name=centos-release-scl
+- name: Install Software Collections repository
+  ansible.builtin.yum:
+    name: centos-release-scl
+    state: present
 
-- name: install postgresql-repos
-  yum:
+# EL7의 오래된 CA 묶음으로는 인증서 검증이 실패해서 검증을 끈다.
+- name: Install PGDG repository
+  ansible.builtin.yum:
     name: https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-    validate_certs: no
+    state: present
+    validate_certs: false

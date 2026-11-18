@@ -1,0 +1,26 @@
+[uwsgi]
+uid = {{ indico_user }}
+gid = {{ indico_group }}
+umask = 027
+processes = 4
+enable-threads = true
+chmod-socket = 770
+socket = {{ indico_home }}/web/uwsgi.sock
+stats = {{ indico_home }}/web/uwsgi-stats.sock
+protocol = uwsgi
+master = true
+auto-procname = true
+procname-prefix-spaced = indico
+disable-logging = true
+single-interpreter = true
+touch-reload = {{ indico_home }}/web/indico.wsgi
+wsgi-file = {{ indico_home }}/web/indico.wsgi
+virtualenv = {{ indico_venv }}
+vacuum = true
+buffer-size = 20480
+memory-report = true
+max-requests = 2500
+harakiri = 900
+harakiri-verbose = true
+reload-on-rss = 2048
+evil-reload-on-rss = 8192

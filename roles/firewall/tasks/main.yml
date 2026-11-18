@@ -1,13 +1,10 @@
 ---
-# tasks file for firewall
-#
-#
-- name: firewall open
-  firewalld:
-    port: "{{item}}/tcp"
+- name: Open HTTP and HTTPS ports
+  ansible.posix.firewalld:
+    port: "{{ item }}/tcp"
     state: enabled
     immediate: true
     permanent: true
-  with_items:
+  loop:
     - 80
     - 443

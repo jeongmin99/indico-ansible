@@ -1,164 +1,123 @@
 ---
-# tasks file for python_env
-#
-#
- - name: add user
-      user:
-        name: indico
-        group: nginx
-        home: /opt/indico
-        shell: /bin/bash
-        system: true
-        create_home: true
-    
-  
-      
-    - name: curl pyenv
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin"
-      shell: curl -L https://github.com/pyenv/pyenv-installer/raw/master/bin/pyenv-installer | bash
+- name: Create indico user
+  ansible.builtin.user:
+    name: "{{ indico_user }}"
+    group: "{{ indico_group }}"
+    home: "{{ indico_home }}"
+    shell: /bin/bash
+    system: true
+    create_home: true
 
-    - name: bashrc cat
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin"
-      shell: |
-        cat >> ~/.bashrc <<'EOF'
-        export PATH="/opt/indico/.pyenv/bin:/usr/pgsql-13/bin:/opt/indico/.venv/bin:$PATH"
-        eval "$(pyenv init --path)"
-        eval "$(pyenv init -)"
-      
-   
+- name: Install pyenv
+  ansible.builtin.shell: curl -L https://github.com/pyenv/pyenv-installer/raw/master/bin/pyenv-installer | bash
+  args:
+    creates: "{{ indico_home }}/.pyenv/bin/pyenv"
+  become: true
+  become_user: "{{ indico_user }}"
 
-    - name: source bashrc
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin"
-      shell: source ~/.bashrc
+- name: Build Python {{ python_version }} with pyenv
+  ansible.builtin.command: "{{ indico_home }}/.pyenv/bin/pyenv install {{ python_version }}"
+  args:
+    creates: "{{ indico_home }}/.pyenv/versions/{{ python_version }}/bin/python"
+  become: true
+  become_user: "{{ indico_user }}"
+  environment:
+    PYENV_ROOT: "{{ indico_home }}/.pyenv"
 
-    
-    - name: pyenv install
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin"
-      shell: . ~/.bashrc &&  pyenv install 3.9.16
+- name: Set global Python version
+  ansible.builtin.copy:
+    content: "{{ python_version }}\n"
+    dest: "{{ indico_home }}/.pyenv/version"
+    owner: "{{ indico_user }}"
+    group: "{{ indico_group }}"
+    mode: "0644"
 
-    - name: pyenv global
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin"
-      shell: . ~/.bashrc && pyenv global 3.9.16
+- name: Create virtualenv
+  ansible.builtin.command: >-
+    {{ indico_home }}/.pyenv/versions/{{ python_version }}/bin/python
+    -m venv --upgrade-deps --prompt indico {{ indico_venv }}
+  args:
+    creates: "{{ indico_venv }}/bin/python"
+  become: true
+  become_user: "{{ indico_user }}"
 
-    - name: python m
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin"
-      shell: . ~/.bashrc && python -m venv --upgrade-deps --prompt indico ~/.venv
+# 나중에 indico 사용자로 로그인했을 때 바로 indico 명령을 쓸 수 있게 한다.
+- name: Set up shell environment for indico user
+  ansible.builtin.blockinfile:
+    path: "{{ indico_home }}/.bashrc"
+    create: true
+    owner: "{{ indico_user }}"
+    group: "{{ indico_group }}"
+    mode: "0644"
+    block: |
+      export PATH="{{ indico_home }}/.pyenv/bin:{{ pg_bin }}:$PATH"
+      eval "$(pyenv init --path)"
+      eval "$(pyenv init -)"
+      source {{ indico_venv }}/bin/activate
 
-    - name: source activate
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin"
-      shell: . ~/.bashrc && source ~/.venv/bin/activate
+- name: Install wheel
+  ansible.builtin.pip:
+    name: wheel
+    virtualenv: "{{ indico_venv }}"
+  become: true
+  become_user: "{{ indico_user }}"
 
-    - name: export path
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin"
-      shell: . ~/.bashrc && export PATH="$PATH:/usr/pgsql-13/bin"
+# psycopg2 빌드에 pg_config가 필요해서 PATH에 PostgreSQL bin을 넣는다.
+- name: Install uWSGI and Indico
+  ansible.builtin.pip:
+    name:
+      - uwsgi
+      - indico
+    virtualenv: "{{ indico_venv }}"
+  become: true
+  become_user: "{{ indico_user }}"
+  environment:
+    PATH: "{{ indico_path }}"
 
-    - name: echo and append
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
-      shell: . ~/.bashrc && echo 'source ~/.venv/bin/activate' >> ~/.bashrc
+# expect 모듈은 대상 서버 Python에 pexpect가 있어야 동작한다.
+- name: Install pip for system Python
+  ansible.builtin.yum:
+    name: python-pip
+    state: present
 
+- name: Install pexpect for system Python
+  ansible.builtin.pip:
+    name: pexpect
 
-    - name: pip install wheel
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-       path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin/"
-      shell: . ~/.bashrc && pip install wheel
-
-
-    - name: pip install uwsgi
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-       path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin/"
-      shell: . ~/.bashrc && pip install uwsgi
-
-    - name: pip install indico
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-       path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin/"
-      shell: . ~/.bashrc && pip install indico
-  
-    - name: pip install root
-      yum:
-        name: python-pip
-    
-    - name: pip pexpect
-      pip:
-        name: pexpect
-
-    - name: indico setup wizard
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
-      expect:
-        command: /bin/bash -c "source ~/.bashrc && export PROMPT_TOOLKIT_COLOR_DEPTH=DEPTH_1_BIT && indico setup wizard | sed 's/\x1b\[0m//g'"
-        responses:
-          Indico root path:
-            - ""
-            - "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\bhttps://192.168.56.102"
-          PostgreSQL database URI:
-            - ""
-            - ""
-          Redis URI \(cache\):
-            - ""
-            - "email@email.com"
-          Admin email:
-            - ""
-            - ""
-          SMTP host:
-            - ""
-            - ""
-          SMTP username:
-            - ""
-            - ""
-          Default timezone:
-            - ""
-            - "y"
-          Enable system notices\?:
-            - "y"
-            - "y"
-
-        echo: yes
-        timeout: 10
+# 응답 목록은 질문 하나당 [첫 출력, 다시 출력될 때] 순서로 맞춰 둔 값이다.
+- name: Run indico setup wizard
+  ansible.builtin.expect:
+    command: /bin/bash -c "indico setup wizard | sed 's/\x1b\[0m//g'"
+    creates: "{{ indico_home }}/etc/indico.conf"
+    responses:
+      Indico root path:
+        - ""
+        - "\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b{{ indico_url }}"
+      PostgreSQL database URI:
+        - ""
+        - ""
+      Redis URI \(cache\):
+        - ""
+        - "{{ indico_admin_email }}"
+      Admin email:
+        - ""
+        - ""
+      SMTP host:
+        - ""
+        - ""
+      SMTP username:
+        - ""
+        - ""
+      Default timezone:
+        - ""
+        - "y"
+      Enable system notices\?:
+        - "y"
+        - "y"
+    echo: true
+    timeout: 10
+  become: true
+  become_user: "{{ indico_user }}"
+  environment:
+    PATH: "{{ indico_path }}"
+    PROMPT_TOOLKIT_COLOR_DEPTH: DEPTH_1_BIT

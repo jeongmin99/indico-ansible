@@ -1,89 +1,66 @@
 ---
-# tasks file for indico_app
-#
-- name: mkdir
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
-      file:
-        path: ~/log/nginx
-        state: directory
+- name: Create nginx log directory
+  ansible.builtin.file:
+    path: "{{ indico_home }}/log/nginx"
+    state: directory
+    owner: "{{ indico_user }}"
+    group: "{{ indico_group }}"
+    mode: "0770"
 
-    - name: chmod whatfile
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
-      shell: . ~/.bashrc && chmod go-rwx ~/* ~/.[^.]*
+# 설치 문서 권한 설정: 홈 아래 파일은 다른 사용자가 못 읽게 막고,
+# nginx 그룹이 필요한 디렉터리만 연다.
+- name: Remove group and other permissions under indico home
+  ansible.builtin.shell: chmod go-rwx {{ indico_home }}/* {{ indico_home }}/.[^.]*
+  changed_when: false
 
-    - name: chmod tmp
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
-      shell: . ~/.bashrc &&  chmod 710 ~/ ~/archive ~/cache ~/log ~/tmp
+- name: Allow nginx group to traverse data directories
+  ansible.builtin.file:
+    path: "{{ indico_home }}/{{ item }}"
+    mode: "0710"
+  loop: ["", archive, cache, log, tmp]
 
-    - name: chmod env
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
-      shell: . ~/.bashrc && chmod 750 ~/web ~/.venv
+- name: Allow nginx group to read web and venv
+  ansible.builtin.file:
+    path: "{{ indico_home }}/{{ item }}"
+    mode: "0750"
+  loop: [web, .venv]
 
-    - name: chmod nginx
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
-      shell: . ~/.bashrc && chmod g+w ~/log/nginx
+- name: Allow nginx group to write its logs
+  ansible.builtin.file:
+    path: "{{ indico_home }}/log/nginx"
+    mode: "g+w"
 
-    - name: restorecon
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
-      shell: . ~/.bashrc && restorecon -R ~/
+- name: Restore SELinux labels
+  ansible.builtin.command: restorecon -R {{ indico_home }}/
+  changed_when: false
 
-    - name: echo man
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
-      shell: . ~/.bashrc && echo -e "\nSTATIC_FILE_METHOD = ('xaccelredirect', {'/opt/indico':'/.xsf/indico'})" >> ~/etc/indico.conf
+- name: Serve static files through nginx
+  ansible.builtin.lineinfile:
+    path: "{{ indico_home }}/etc/indico.conf"
+    line: "STATIC_FILE_METHOD = ('xaccelredirect', {'{{ indico_home }}':'/.xsf/indico'})"
 
-    - name: db prepare
-      become: yes
-      become_user: indico
-      become_method: su
-      environment:
-        path: "/opt/indico/.pyenv/shims:/opt/indico/.pyenv/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/indico/.local/bin:/opt/indico/bin:/usr/pgsql-13/bin"
-      shell: . ~/.bashrc && indico db prepare
+- name: Check whether the database is already prepared
+  ansible.builtin.command: psql indico -tAc "SELECT 1 FROM pg_namespace WHERE nspname='events'"
+  become: true
+  become_user: postgres
+  register: indico_schema
+  changed_when: false
 
+- name: Create Indico tables
+  ansible.builtin.command: "{{ indico_venv }}/bin/indico db prepare"
+  become: true
+  become_user: "{{ indico_user }}"
+  environment:
+    PATH: "{{ indico_path }}"
+  when: indico_schema.stdout != "1"
+  changed_when: true
 
-    - name: restart service
-      systemd:
-        state: restarted
-        name: "{{item}}"
-      with_items:
-        - nginx.service
-        - indico-celery.service
-        - indico-uwsgi.service
-
-    - name: enable service
-      systemd:
-        enabled: true
-        name: "{{item}}"
-      with_items:
-        - nginx.service
-        - postgresql-13.service
-        - redis.service
-        - indico-celery.service
-        - indico-uwsgi.service
+- name: Restart and enable web services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+  loop:
+    - nginx
+    - indico-celery
+    - indico-uwsgi

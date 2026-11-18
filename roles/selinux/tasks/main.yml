@@ -1,30 +1,13 @@
 ---
-# tasks file for selinux
-#
-    - name: config selinux
-      shell: |
-        cat > /tmp/indico.cil <<'EOF'
-        ; define custom type that logrotate can access
-        (type indico_log_t)
-        (typeattributeset file_type (indico_log_t))
-        (typeattributeset logfile (indico_log_t))
-        (roletype object_r indico_log_t)
+# SELinux는 끄지 않고, Indico 설치 문서의 정책 모듈을 올린다.
+- name: Copy SELinux policy module
+  ansible.builtin.copy:
+    src: indico.cil
+    dest: /etc/selinux/indico.cil
+    mode: "0644"
+  register: indico_cil
 
-        ; allow logrotate to reload systemd services
-        (allow logrotate_t init_t (service (start)))
-        (allow logrotate_t policykit_t (dbus (send_msg)))
-        (allow policykit_t logrotate_t (dbus (send_msg)))
-
-        ; make sure the uwsgi socket is writable by the webserver
-        (typetransition unconfined_service_t usr_t sock_file "uwsgi.sock" httpd_sys_rw_content_t)
-        (filecon "/opt/indico/web/uwsgi\.sock" socket (system_u object_r httpd_sys_rw_content_t ((s0)(s0))))
-
-        ; set proper types for our log dirs
-        (filecon "/opt/indico/log(/.*)?" any (system_u object_r indico_log_t ((s0)(s0))))
-        (filecon "/opt/indico/log/nginx(/.*)?" any (system_u object_r httpd_log_t ((s0)(s0))))
-
-
-
-
-    - name: semodule
-      shell: semodule -i /tmp/indico.cil
+- name: Load SELinux policy module
+  ansible.builtin.command: semodule -i /etc/selinux/indico.cil
+  when: indico_cil.changed
+  changed_when: true

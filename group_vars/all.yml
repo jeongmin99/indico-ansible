@@ -1,0 +1,18 @@
+---
+# 접속 주소. nginx server_name, 인증서 CN, Indico URL에 같이 쓰인다.
+indico_hostname: "{{ ansible_host | default(inventory_hostname) }}"
+indico_url: "https://{{ indico_hostname }}"
+indico_admin_email: "admin@example.com"
+
+indico_user: indico
+indico_group: nginx
+indico_home: /opt/indico
+indico_venv: "{{ indico_home }}/.venv"
+
+pg_version: 13
+pg_bin: "/usr/pgsql-{{ pg_version }}/bin"
+
+python_version: 3.9.16
+
+# indico 사용자로 실행하는 작업에서 쓰는 PATH
+indico_path: "{{ indico_venv }}/bin:{{ indico_home }}/.pyenv/shims:{{ indico_home }}/.pyenv/bin:{{ pg_bin }}:/usr/local/bin:/usr/bin:/bin:/usr/sbin"

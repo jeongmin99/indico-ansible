@@ -1,9 +1,8 @@
-- name: install indico
-  hosts: worker1
-  gather_facts: no
-  become: yes
-  vars:
-    hostname: "192.168.56.102"
+---
+- name: Install Indico
+  hosts: indico
+  become: true
+  gather_facts: true
 
   roles:
     - repo
